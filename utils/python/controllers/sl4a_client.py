@@ -101,7 +101,7 @@ def stop_sl4a(adb_proxy):
         adb_proxy: adb.AdbProxy, The adb proxy to use for checking.
     """
     adb_proxy.shell(
-        'am force-stop com.googlecode.android_scripting', ignore_status=True)
+        'am force-stop com.googlecode.android_scripting', no_except=True)
 
 
 def is_sl4a_installed(adb_proxy):
@@ -355,8 +355,8 @@ class Sl4aClient(object):
                     logging.error(
                         "No response for RPC method %s on iteration %s",
                         method, i)
-                    raise Sl4aProtocolError(
-                        Sl4aProtocolError.NO_RESPONSE_FROM_SERVER)
+                    raise ProtocolError(
+                        ProtocolError.NO_RESPONSE_FROM_SERVER)
             else:
                 break
         result = json.loads(str(response, encoding="utf8"))

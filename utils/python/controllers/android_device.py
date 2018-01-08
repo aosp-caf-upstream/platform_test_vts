@@ -33,6 +33,7 @@ from vts.runners.host.tcp_client import vts_tcp_client
 from vts.utils.python.controllers import adb
 from vts.utils.python.controllers import event_dispatcher
 from vts.utils.python.controllers import fastboot
+from vts.utils.python.controllers import customflasher
 from vts.utils.python.controllers import sl4a_client
 from vts.utils.python.mirror import mirror_tracker
 
@@ -339,6 +340,8 @@ class AndroidDevice(object):
         adb: An AdbProxy object used for interacting with the device via adb.
         fastboot: A FastbootProxy object used for interacting with the device
                   via fastboot.
+        customflasher: A CustomFlasherProxy object used for interacting with
+                       the device via user defined flashing binary.
         host_command_port: the host-side port for runner to agent sessions
                            (to send commands and receive responses).
         host_callback_port: the host-side port for agent to runner sessions
@@ -359,8 +362,9 @@ class AndroidDevice(object):
         self._product_type = product_type
         self.device_command_port = None
         self.device_callback_port = device_callback_port
-        self.log = AndroidDeviceLoggerAdapter(logging.getLogger(),
-                                              {"serial": self.serial})
+        self.log = AndroidDeviceLoggerAdapter(logging.getLogger(), {
+            "serial": self.serial
+        })
         base_log_path = getattr(logging, "log_path", "/tmp/logs/")
         self.log_path = os.path.join(base_log_path, "AndroidDevice%s" % serial)
         self.adb_logcat_process = None
@@ -368,6 +372,7 @@ class AndroidDevice(object):
         self.vts_agent_process = None
         self.adb = adb.AdbProxy(serial)
         self.fastboot = fastboot.FastbootProxy(serial)
+        self.customflasher = customflasher.CustomFlasherProxy(serial)
         if not self.isBootloaderMode:
             self.rootAdb()
         self.host_command_port = None
@@ -385,6 +390,14 @@ class AndroidDevice(object):
 
     def __del__(self):
         self.cleanUp()
+
+    def SetCustomFlasherPath(self, customflasher_path):
+        """Sets customflasher path to use to flash the device.
+
+        Args:
+            customflasher_path: string, path to user-spcified flash binary.
+        """
+        self.customflasher.SetCustomBinaryPath(customflasher_path)
 
     def cleanUp(self):
         """Cleans up the AndroidDevice object and releases any resources it
@@ -441,6 +454,16 @@ class AndroidDevice(object):
         else:
             model = self.getProp("ro.product.name").lower()
             return model
+
+    @property
+    def first_api_level(self):
+        """Gets the API level that the device was initially launched with."""
+        return self.getProp("ro.product.first_api_level")
+
+    @property
+    def vndk_version(self):
+        """Gets the VNDK version that the vendor partition is using."""
+        return self.getProp("ro.vndk.version")
 
     @property
     def cpu_abi(self):
@@ -792,10 +815,11 @@ class AndroidDevice(object):
                 self.host_command_port = adb.get_available_host_port()
             self.adb.tcp_forward(self.host_command_port,
                                  self.device_command_port)
-            self.hal = mirror_tracker.MirrorTracker(self.host_command_port,
-                                            self.host_callback_port, True)
+            self.hal = mirror_tracker.MirrorTracker(
+                self.host_command_port, self.host_callback_port, True)
             self.lib = mirror_tracker.MirrorTracker(self.host_command_port)
-            self.shell = mirror_tracker.MirrorTracker(self.host_command_port)
+            self.shell = mirror_tracker.MirrorTracker(
+                host_command_port=self.host_command_port, adb=self.adb)
         if enable_sl4a:
             try:
                 self.startSl4aClient(enable_sl4a_ed)
@@ -809,6 +833,8 @@ class AndroidDevice(object):
         """
         if self.adb_logcat_process:
             self.stopAdbLogcat()
+        self._terminateAllSl4aSessions()
+        self.stopSl4a()
         self.stopVtsAgent()
         if self.hal:
             self.hal.CleanUp()
@@ -850,21 +876,24 @@ class AndroidDevice(object):
                 self.log.warning(
                     "A command to setup the env to start the VTS Agent failed %s",
                     e)
-
+        log_severity = getattr(self, keys.ConfigKeys.KEY_LOG_SEVERITY, "INFO")
         bits = ['64', '32'] if self.is64Bit else ['32']
         for bitness in bits:
             vts_agent_log_path = os.path.join(self.log_path,
                                               "vts_agent_" + bitness + ".log")
-            cmd = (
-                'adb -s {s} shell LD_LIBRARY_PATH={path}/{bitness} '
-                '{path}/{bitness}/vts_hal_agent{bitness}'
-                ' {path}/32/vts_hal_driver32 {path}/64/vts_hal_driver64 {path}/spec'
-                ' {path}/32/vts_shell_driver32 {path}/64/vts_shell_driver64 >> {log} 2>&1'
-            ).format(
-                s=self.serial,
-                bitness=bitness,
-                path=DEFAULT_AGENT_BASE_DIR,
-                log=vts_agent_log_path)
+            cmd = ('adb -s {s} shell LD_LIBRARY_PATH={path}/{bitness} '
+                   '{path}/{bitness}/vts_hal_agent{bitness} '
+                   '--hal_driver_path_32={path}/32/vts_hal_driver32 '
+                   '--hal_driver_path_64={path}/64/vts_hal_driver64 '
+                   '--spec_dir={path}/spec '
+                   '--shell_driver_path_32={path}/32/vts_shell_driver32 '
+                   '--shell_driver_path_64={path}/64/vts_shell_driver64 '
+                   '-l {severity} >> {log} 2>&1').format(
+                       s=self.serial,
+                       bitness=bitness,
+                       path=DEFAULT_AGENT_BASE_DIR,
+                       log=vts_agent_log_path,
+                       severity=log_severity)
             try:
                 self.vts_agent_process = utils.start_standing_subprocess(
                     cmd, check_health_delay=1)
@@ -956,8 +985,7 @@ class AndroidDevice(object):
     def stopSl4a(self):
         """Stops an SL4A apk on a target device."""
         try:
-            self.adb.shell(
-                "am force-stop %s" % SL4A_APK_NAME, ignore_status=True)
+            self.adb.shell("am force-stop %s" % SL4A_APK_NAME)
         except adb.AdbError as e:
             self.log.warn("Fail to stop package %s: %s", SL4A_APK_NAME, e)
 
@@ -977,9 +1005,7 @@ class AndroidDevice(object):
         """
         for cmd in ("ps -A", "ps"):
             try:
-                out = self.adb.shell(
-                    '%s | grep "S %s"' % (cmd, package_name),
-                    ignore_status=True)
+                out = self.adb.shell('%s | grep "S %s"' % (cmd, package_name))
                 if package_name not in out:
                     continue
                 try:
@@ -1029,8 +1055,8 @@ class AndroidDevice(object):
     @property
     def droid(self):
         """The default SL4A session to the device if exist, None otherwise."""
-        if not hasattr(self,
-                       "_sl4a_sessions") or len(self._sl4a_sessions) == 0:
+        if not hasattr(self, "_sl4a_sessions") or len(
+                self._sl4a_sessions) == 0:
             return None
         try:
             session_id = sorted(self._sl4a_sessions)[0]
@@ -1044,8 +1070,8 @@ class AndroidDevice(object):
     @property
     def droids(self):
         """A list of the active SL4A sessions on this device."""
-        if not hasattr(self,
-                       "_sl4a_sessions") or len(self._sl4a_sessions) == 0:
+        if not hasattr(self, "_sl4a_sessions") or len(
+                self._sl4a_sessions) == 0:
             return None
         keys = sorted(self._sl4a_sessions)
         results = []
@@ -1056,8 +1082,8 @@ class AndroidDevice(object):
     @property
     def ed(self):
         """The default SL4A session to the device if exist, None otherwise."""
-        if (not hasattr(self, "_sl4a_event_dispatchers") or
-                len(self._sl4a_event_dispatchers) == 0):
+        if (not hasattr(self, "_sl4a_event_dispatchers")
+                or len(self._sl4a_event_dispatchers) == 0):
             return None
         logging.info("self._sl4a_event_dispatchers: %s",
                      self._sl4a_event_dispatchers)
@@ -1088,50 +1114,20 @@ class AndroidDevice(object):
             results.append(self._sl4a_sessions[key][0])
         return results
 
-    def getVintfXml(self, use_lshal=True, is_framework_manifest=False):
+    def getVintfXml(self, use_lshal=True):
         """Reads the vendor interface manifest Xml.
 
         Args:
             use_hal: bool, set True to use lshal command and False to fetch
                      manifest.xml directly.
-            is_framework_manifest: bool, set True to fetch /system/manifest.xml,
-                                   False to fetch /vendor/manifest.xml, effective
-                                   when use_lshal is False.
 
         Returns:
             Vendor interface manifest string.
         """
-        try:
-            if use_lshal:
-                stdout = self.adb.shell('"lshal --init-vintf 2> /dev/null"')
-            elif is_framework_manifest:
-                stdout = self.adb.shell('cat /system/manifest.xml')
-            else:
-                try:
-                    stdout = self.adb.shell('cat /odm/manifest.xml')
-                except adb.AdbError as e:
-                    logging.debug("Can't read /odm/manifest.xml; fall back to "
-                                  "use /vendor/manifest.xml instead.")
-                    stdout = self.adb.shell('cat /vendor/manifest.xml')
-            return str(stdout)
-        except adb.AdbError as e:
+        if not use_lshal:
             return None
-
-    def getCompMatrixXml(self, is_framework_comp_matrix=True):
-        """Reads the vendor interface manifest Xml.
-
-        Args:
-            is_framework_comp_matrix: bool, set True to fetch /system/compatibility_matrix.xml,
-                                      False to fetch /vendor/compatibility_matrix.xml
-
-        Returns:
-            Compatibility matrix content string.
-        """
         try:
-            if is_framework_comp_matrix:
-                stdout = self.adb.shell('cat /system/compatibility_matrix.xml')
-            else:
-                stdout = self.adb.shell('cat /vendor/compatibility_matrix.xml')
+            stdout = self.adb.shell('"lshal --init-vintf 2> /dev/null"')
             return str(stdout)
         except adb.AdbError as e:
             return None
@@ -1227,7 +1223,7 @@ class AndroidDevice(object):
 
         Terminate all sessions and clear caches.
         """
-        if self._sl4a_sessions:
+        if hasattr(self, "_sl4a_sessions") and self._sl4a_sessions:
             session_ids = list(self._sl4a_sessions.keys())
             for session_id in session_ids:
                 try:

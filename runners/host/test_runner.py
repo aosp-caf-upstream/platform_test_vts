@@ -107,38 +107,51 @@ def runTestClass(test_class):
 
     for config in test_configs:
         if keys.ConfigKeys.KEY_TEST_MAX_TIMEOUT in config:
-            timeout_sec = int(config[keys.ConfigKeys.KEY_TEST_MAX_TIMEOUT]) / 1000.0
+            timeout_sec = int(config[
+                keys.ConfigKeys.KEY_TEST_MAX_TIMEOUT]) / 1000.0
         else:
             timeout_sec = 60 * 60 * 3
             logging.warning("%s unspecified. Set timeout to %s seconds.",
                             keys.ConfigKeys.KEY_TEST_MAX_TIMEOUT, timeout_sec)
-        # The default SIGINT handler sends KeyboardInterrupt to main thread.
-        # On Windows, raising CTRL_C_EVENT, which is received as SIGINT,
-        # has no effect on non-console process. interrupt_main() works but
-        # does not unblock main thread's IO immediately.
-        timeout_func = (raiseSigint if not utils.is_on_windows() else
-                        thread.interrupt_main)
-        sig_timer = threading.Timer(timeout_sec, timeout_func)
+
+        watcher_enabled = threading.Event()
+
+        def watchStdin():
+            while True:
+                line = sys.stdin.readline()
+                if not line:
+                    break
+            watcher_enabled.wait()
+            logging.info("Attempt to interrupt runner thread.")
+            if not utils.is_on_windows():
+                # Default SIGINT handler sends KeyboardInterrupt to main thread
+                # and unblocks it.
+                os.kill(os.getpid(), signal.SIGINT)
+            else:
+                # On Windows, raising CTRL_C_EVENT, which is received as
+                # SIGINT, has no effect on non-console process.
+                # interrupt_main() behaves like SIGINT but does not unblock
+                # main thread immediately.
+                thread.interrupt_main()
+
+        watcher_thread = threading.Thread(target=watchStdin, name="watchStdin")
+        watcher_thread.daemon = True
+        watcher_thread.start()
 
         tr = TestRunner(config, test_identifiers)
         tr.parseTestConfig(config)
         try:
-            sig_timer.start()
+            watcher_enabled.set()
             tr.runTestClass(test_class, None)
         except KeyboardInterrupt as e:
-            logging.exception("Aborted by timeout or ctrl+C: %s", e)
+            logging.exception("Aborted")
         except Exception as e:
             logging.error("Unexpected exception")
             logging.exception(e)
         finally:
-            sig_timer.cancel()
+            watcher_enabled.clear()
             tr.stop()
             return tr.results
-
-
-def raiseSigint():
-    """Raises SIGINT."""
-    os.kill(os.getpid(), signal.SIGINT)
 
 
 class TestRunner(object):
@@ -166,6 +179,7 @@ class TestRunner(object):
                  not.
         test_cls_instances: list of test class instances that were executed
                             or scheduled to be executed.
+        log_severity: string, log severity level for the test logger.
     """
 
     def __init__(self, test_configs, run_list):
@@ -182,7 +196,10 @@ class TestRunner(object):
         l_path = os.path.join(self.test_configs[keys.ConfigKeys.KEY_LOG_PATH],
                               self.testbed_name, start_time)
         self.log_path = os.path.abspath(l_path)
-        logger.setupTestLogger(self.log_path, self.testbed_name)
+        self.log_severity = self.test_configs.get(
+            keys.ConfigKeys.KEY_LOG_SEVERITY, "INFO").upper()
+        logger.setupTestLogger(
+            self.log_path, self.testbed_name, log_severity=self.log_severity)
         self.controller_registry = {}
         self.controller_destructors = {}
         self.run_list = run_list
@@ -313,6 +330,11 @@ class TestRunner(object):
             # in case the controller module modifies the config internally.
             original_config = self.testbed_configs[module_config_name]
             controller_config = copy.deepcopy(original_config)
+            # Add log_severity config to device controller config.
+            if isinstance(controller_config, list):
+                for config in controller_config:
+                    if isinstance(config, dict):
+                        config["log_severity"] = self.log_severity
             logging.info("controller_config: %s", controller_config)
             if "use_vts_agent" not in self.testbed_configs:
                 objects = create(controller_config, start_services)

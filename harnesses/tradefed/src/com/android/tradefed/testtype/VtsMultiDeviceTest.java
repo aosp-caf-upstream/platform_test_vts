@@ -32,8 +32,9 @@ import com.android.tradefed.util.ArrayUtil;
 import com.android.tradefed.util.CommandResult;
 import com.android.tradefed.util.CommandStatus;
 import com.android.tradefed.util.FileUtil;
-import com.android.tradefed.util.StreamUtil;
 import com.android.tradefed.util.JsonUtil;
+import com.android.tradefed.util.ProcessHelper;
+import com.android.tradefed.util.RunInterruptedException;
 import com.android.tradefed.util.IRunUtil;
 import com.android.tradefed.util.RunUtil;
 import com.android.tradefed.util.VtsDashboardUtil;
@@ -45,15 +46,11 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONException;
 
-import java.io.FileReader;
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
-
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.PrintWriter;
 import java.nio.file.Paths;
 import java.util.Map;
@@ -61,6 +58,7 @@ import java.util.TreeSet;
 import java.util.Set;
 import java.util.Collection;
 import java.util.ArrayList;
+import java.util.Arrays;
 
 /**
  * A Test that runs a vts multi device test package (part of Vendor Test Suite,
@@ -78,6 +76,7 @@ public class VtsMultiDeviceTest
     static final String COVERAGE_PROPERTY = "ro.vts.coverage";
     static final String DATA_FILE_PATH = "data_file_path";
     static final String LOG_PATH = "log_path";
+    static final String LOG_SEVERITY = "log_severity";
     static final String NAME = "name";
     static final String OS_NAME = "os.name";
     static final String WINDOWS = "Windows";
@@ -134,6 +133,7 @@ public class VtsMultiDeviceTest
     static final String HAL_HIDL_PACKAGE_NAME = "hal_hidl_package_name";
     static final String REPORT_MESSAGE_FILE_NAME = "report_proto.msg";
     static final String RUN_AS_VTS_SELF_TEST = "run_as_vts_self_test";
+    static final String RUN_AS_COMPLIANCE_TEST = "run_as_compliance_test";
     static final String SYSTRACE_PROCESS_NAME = "systrace_process_name";
     static final String TEMPLATE_BINARY_TEST_PATH = "vts/testcases/template/binary_test/binary_test";
     static final String TEMPLATE_GTEST_BINARY_TEST_PATH = "vts/testcases/template/gtest_binary_test/gtest_binary_test";
@@ -203,12 +203,6 @@ public class VtsMultiDeviceTest
                     + "needed to run the test (e.g., android.hardware.graphics.mapper@2.0). "
                     + "this can override precondition-lshal option.")
     private String mPreconditionVintf = null;
-
-    @Option(name = "precondition-vintf-override",
-            description = "If precondition-lshal is present and precondition-vintf is not, "
-                    + "set precondition-vintf to the value of precondition-lshal. "
-                    + "The test runner will find the HAL in manifest.xml instead of lshal.")
-    private boolean mPreconditionVintfOverride = false;
 
     @Option(name = "use-stdout-logs",
             description = "Flag that determines whether to use std:out to parse output.")
@@ -397,6 +391,9 @@ public class VtsMultiDeviceTest
 
     @Option(name = "gtest-batch-mode", description = "Run Gtest binaries in batch mode.")
     private boolean mGtestBatchMode = false;
+
+    @Option(name = "log-severity", description = "Set the log severity level.")
+    private String mLogSeverity = "INFO";
 
     // This variable is set in order to include the directory that contains the
     // python test cases. This is set before calling the method.
@@ -794,6 +791,19 @@ public class VtsMultiDeviceTest
         jsonObject.put(TEST_MAX_TIMEOUT, mTestTimeout);
         CLog.i("Added %s to the Json object: %d", TEST_MAX_TIMEOUT, mTestTimeout);
 
+        if (!mLogSeverity.isEmpty()) {
+            String logSeverity = mLogSeverity.toUpperCase();
+            ArrayList<String> severityList =
+                    new ArrayList<String>(Arrays.asList("ERROR", "WARNING", "INFO", "DEBUG"));
+            if (!severityList.contains(logSeverity)) {
+                CLog.w("Unsupported log severity %s, use default log_severity:INFO instead.",
+                        logSeverity);
+                logSeverity = "INFO";
+            }
+            jsonObject.put(LOG_SEVERITY, logSeverity);
+            CLog.i("Added %s to the Json object: %s", LOG_SEVERITY, logSeverity);
+        }
+
         if (mAbi != null) {
             jsonObject.put(ABI_NAME, mAbi.getName());
             CLog.i("Added %s to the Json object", ABI_NAME);
@@ -916,16 +926,6 @@ public class VtsMultiDeviceTest
             CLog.i("Added %s to the Json object", PRECONDITION_VINTF);
         }
 
-        if (mPreconditionVintfOverride && mPreconditionLshal != null) {
-            if (mPreconditionVintf == null) {
-                jsonObject.put(PRECONDITION_VINTF, mPreconditionLshal);
-                CLog.i("Added %s to the Json object, overriding %s", PRECONDITION_VINTF,
-                        PRECONDITION_LSHAL);
-            } else {
-                CLog.w("Ignored precondition-vintf-override as precondition-vintf is present");
-            }
-        }
-
         if (!mBinaryTestProfilingLibraryPath.isEmpty()) {
             jsonObject.put(BINARY_TEST_PROFILING_LIBRARY_PATH,
                     new JSONArray(mBinaryTestProfilingLibraryPath));
@@ -982,6 +982,11 @@ public class VtsMultiDeviceTest
             jsonObject.put(RUN_AS_VTS_SELF_TEST, mRunAsVtsSelfTest);
             CLog.i("Added %s to the Json object", RUN_AS_VTS_SELF_TEST);
         }
+
+        if ("vts".equals(mBuildInfo.getTestTag())) {
+            jsonObject.put(RUN_AS_COMPLIANCE_TEST, true);
+            CLog.i("Added %s to the Json object", RUN_AS_COMPLIANCE_TEST);
+        }
     }
 
     /**
@@ -1021,13 +1026,72 @@ public class VtsMultiDeviceTest
     }
 
     /**
+     * Create a {@link ProcessHelper} from mRunUtil.
+     *
+     * @param cmd the command to run.
+     * @throws IOException if fails to start Process.
+     */
+    protected ProcessHelper createProcessHelper(String[] cmd) throws IOException {
+        return new ProcessHelper(mRunUtil.runCmdInBackground(cmd));
+    }
+
+    /**
+     * Run VTS Python runner and handle interrupt from TradeFed.
+     *
+     * @param cmd the command to start VTS Python runner.
+     * @param commandResult the object containing the command result.
+     * @return null if the command terminates or times out; a message string if the command is
+     * interrupted by TradeFed.
+     */
+    private String runPythonRunner(String[] cmd, CommandResult commandResult) {
+        ProcessHelper process;
+        try {
+            process = createProcessHelper(cmd);
+        } catch (IOException e) {
+            CLog.e(e);
+            commandResult.setStatus(CommandStatus.EXCEPTION);
+            commandResult.setStdout("");
+            commandResult.setStderr("");
+            return null;
+        }
+
+        String interruptMessage;
+        try {
+            CommandStatus commandStatus;
+            try {
+                commandStatus = process.waitForProcess(mTestTimeout);
+                interruptMessage = null;
+            } catch (RunInterruptedException e) {
+                CLog.e("Python process is interrupted.");
+                commandStatus = CommandStatus.TIMED_OUT;
+                interruptMessage = (e.getMessage() != null ? e.getMessage() : "");
+            }
+            if (process.isRunning()) {
+                CLog.e("Cancel Python process and wait %d seconds.",
+                        TEST_ABORT_TIMEOUT_MSECS / 1000);
+                try {
+                    process.closeStdin();
+                    // Wait for the process to clean up and ignore the CommandStatus.
+                    // Propagate RunInterruptedException if this is interrupted again.
+                    process.waitForProcess(TEST_ABORT_TIMEOUT_MSECS);
+                } catch (IOException e) {
+                    CLog.e("Fail to cancel Python process.");
+                }
+            }
+            commandResult.setStatus(commandStatus);
+        } finally {
+            process.cleanUp();
+        }
+        commandResult.setStdout(process.getStdout());
+        commandResult.setStderr(process.getStderr());
+        return interruptMessage;
+    }
+
+    /**
      * This method prepares a command for the test and runs the python file as
      * given in the arguments.
      *
      * @param listener
-     * @param runUtil
-     * @param mTestCasePath
-     * @param mTestConfigPath
      * @throws RuntimeException
      * @throws IllegalArgumentException
      */
@@ -1087,8 +1151,9 @@ public class VtsMultiDeviceTest
         cmd = ArrayUtil.buildArray(baseOpts, testModule);
 
         printToDeviceLogcatAboutTestModuleStatus("BEGIN");
-        CommandResult commandResult =
-                mRunUtil.runTimedCmd(mTestTimeout + TEST_ABORT_TIMEOUT_MSECS, cmd);
+
+        CommandResult commandResult = new CommandResult();
+        String interruptMessage = runPythonRunner(cmd, commandResult);
 
         if (commandResult != null) {
             CommandStatus commandStatus = commandResult.getStatus();
@@ -1105,25 +1170,10 @@ public class VtsMultiDeviceTest
             CLog.i("Standard output is: %s", commandResult.getStdout());
             CLog.i("Parsing test result: %s", commandResult.getStderr());
             printToDeviceLogcatAboutTestModuleStatus("END");
-        } else {
-            printToDeviceLogcatAboutTestModuleStatus("FRAMEWORK_ERROR");
         }
 
         VtsMultiDeviceTestResultParser parser =
                 new VtsMultiDeviceTestResultParser(listener, mRunName);
-
-        File reportMsg;
-        int waitCount = 0;
-        // Wait python process to finish for 3 minutes at most
-        while ((reportMsg = FileUtil.findFile(vtsRunnerLogDir, REPORT_MESSAGE_FILE_NAME)) == null
-                && waitCount < 180) {
-            try {
-                Thread.sleep(1000);
-            } catch (Exception e) {
-                System.out.println(e);
-            }
-            waitCount++;
-        }
 
         if (mUseStdoutLogs) {
             if (commandResult.getStdout() == null) {
@@ -1166,6 +1216,7 @@ public class VtsMultiDeviceTest
         }
         printVtsLogs(vtsRunnerLogDir);
 
+        File reportMsg = FileUtil.findFile(vtsRunnerLogDir, REPORT_MESSAGE_FILE_NAME);
         CLog.i("Report message path: %s", reportMsg);
 
         if (reportMsg == null) {
@@ -1183,6 +1234,10 @@ public class VtsMultiDeviceTest
         if (jsonFilePath != null) {
           FileUtil.deleteFile(new File(jsonFilePath));
           CLog.i("Deleted the runner json config file, %s.", jsonFilePath);
+        }
+
+        if (interruptMessage != null) {
+            throw new RunInterruptedException(interruptMessage);
         }
     }
 
@@ -1232,7 +1287,11 @@ public class VtsMultiDeviceTest
         if (children != null) {
             for (File child : children) {
                 if (child.isDirectory()) {
-                    printVtsLogs(child);
+                    if (!child.getName().equals("temp")) {
+                        // temp in python log directory is for temp files produced by test module
+                        // and thus should not be included in log printout
+                        printVtsLogs(child);
+                    }
                 } else {
                     CLog.i("VTS log file %s\n", child.getAbsolutePath());
                     try {

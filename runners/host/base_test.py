@@ -17,6 +17,7 @@
 import logging
 import os
 import re
+import sys
 
 from vts.proto import VtsReportMessage_pb2 as ReportMsg
 from vts.runners.host import asserts
@@ -37,6 +38,8 @@ from vts.utils.python.reporting import log_uploading_utils
 from vts.utils.python.systrace import systrace_utils
 from vts.utils.python.web import feature_utils
 from vts.utils.python.web import web_utils
+
+from acts import signals as acts_signals
 
 # Macro strings for test result reporting
 TEST_CASE_TOKEN = "[Test Case]"
@@ -159,6 +162,8 @@ class BaseTestClass(object):
             self.user_params, web=self.web)
         self.run_as_vts_self_test = self.getUserParam(
             keys.ConfigKeys.RUN_AS_VTS_SELFTEST, default_value=False)
+        self.run_as_compliance_test = self.getUserParam(
+            keys.ConfigKeys.RUN_AS_COMPLIANCE_TEST, default_value=False)
         self._skip_all_testcases = False
         self._bug_report_on_failure = self.getUserParam(
             keys.ConfigKeys.IKEY_BUG_REPORT_ON_FAILURE, default_value=False)
@@ -392,7 +397,7 @@ class BaseTestClass(object):
             self.web.SetTestResult(ReportMsg.TEST_CASE_RESULT_FAIL)
         self.onFail(record.test_name, begin_time)
         if self._bug_report_on_failure:
-            self.CatchBugReport('%s-%s' % (self.TAG, record.test_name))
+            self.DumpBugReport('%s-%s' % (self.TAG, record.test_name))
 
     def onFail(self, test_name, begin_time):
         """A function that is executed upon a test case failure.
@@ -485,7 +490,7 @@ class BaseTestClass(object):
             self.web.SetTestResult(ReportMsg.TEST_CASE_RESULT_EXCEPTION)
         self.onException(test_name, begin_time)
         if self._bug_report_on_failure:
-            self.CatchBugReport('%s-%s' % (self.TAG, record.test_name))
+            self.DumpBugReport('%s-%s' % (self.TAG, record.test_name))
 
     def onException(self, test_name, begin_time):
         """A function that is executed upon an unhandled exception from a test
@@ -517,8 +522,8 @@ class BaseTestClass(object):
             return
         try:
             func()
-        except signals.TestAbortAll:
-            raise
+        except (signals.TestAbortAll, acts_signals.TestAbortAll) as e:
+            raise signals.TestAbortAll, e, sys.exc_info()[2]
         except Exception as e:
             logging.exception("Exception happened when executing %s for %s.",
                               func.__name__, record.test_name)
@@ -643,26 +648,31 @@ class BaseTestClass(object):
                 finished = True
             finally:
                 self._tearDown(test_name)
-        except (signals.TestFailure, AssertionError) as e:
+        except (signals.TestFailure, acts_signals.TestFailure, AssertionError) as e:
             tr_record.testFail(e)
             self._exec_procedure_func(self._onFail)
             finished = True
-        except signals.TestSkip as e:
+        except (signals.TestSkip, acts_signals.TestSkip) as e:
             # Test skipped.
             tr_record.testSkip(e)
             self._exec_procedure_func(self._onSkip)
             finished = True
-        except (signals.TestAbortClass, signals.TestAbortAll) as e:
+        except (signals.TestAbortClass, acts_signals.TestAbortClass) as e:
             # Abort signals, pass along.
             tr_record.testFail(e)
             finished = True
-            raise e
-        except signals.TestPass as e:
+            raise signals.TestAbortClass, e, sys.exc_info()[2]
+        except (signals.TestAbortAll, acts_signals.TestAbortAll) as e:
+            # Abort signals, pass along.
+            tr_record.testFail(e)
+            finished = True
+            raise signals.TestAbortAll, e, sys.exc_info()[2]
+        except (signals.TestPass, acts_signals.TestPass) as e:
             # Explicit test pass.
             tr_record.testPass(e)
             self._exec_procedure_func(self._onPass)
             finished = True
-        except signals.TestSilent as e:
+        except (signals.TestSilent, acts_signals.TestSilent) as e:
             # Suppress test reporting.
             is_silenced = True
             self._exec_procedure_func(self._onSilent)
@@ -691,7 +701,9 @@ class BaseTestClass(object):
         finally:
             if not finished:
                 for device in self.android_devices:
-                    device.shell.DisableShell()
+                    # if shell has not been set up yet
+                    if device.shell is not None:
+                        device.shell.DisableShell()
 
                 logging.error('Test timed out.')
                 tr_record.testError()
@@ -737,24 +749,36 @@ class BaseTestClass(object):
         args = args or ()
         kwargs = kwargs or {}
         failed_settings = []
-        for s in settings:
-            test_name = "{} {}".format(tag, s)
+
+        def GenerateTestName(setting):
+            test_name = "{} {}".format(tag, setting)
             if name_func:
                 try:
-                    test_name = name_func(s, *args, **kwargs)
+                    test_name = name_func(setting, *args, **kwargs)
                 except:
                     logging.exception(("Failed to get test name from "
                                        "test_func. Fall back to default %s"),
                                       test_name)
 
-            tr_record = records.TestResultRecord(test_name, self.TAG)
-            self.results.requested.append(tr_record)
             if len(test_name) > utils.MAX_FILENAME_LEN:
                 test_name = test_name[:utils.MAX_FILENAME_LEN]
+
+            return test_name
+
+        for setting in settings:
+            test_name = GenerateTestName(setting)
+
+            tr_record = records.TestResultRecord(test_name, self.TAG)
+            self.results.requested.append(tr_record)
+
+        for setting in settings:
+            test_name = GenerateTestName(setting)
             previous_success_cnt = len(self.results.passed)
-            self.execOneTest(test_name, test_func, (s, ) + args, **kwargs)
+
+            self.execOneTest(test_name, test_func, (setting, ) + args, **kwargs)
             if len(self.results.passed) - previous_success_cnt != 1:
-                failed_settings.append(s)
+                failed_settings.append(setting)
+
         return failed_settings
 
     def _exec_func(self, func, *args):
@@ -773,8 +797,8 @@ class BaseTestClass(object):
         """
         try:
             return func(*args)
-        except signals.TestAbortAll:
-            raise
+        except (signals.TestAbortAll, acts_signals.TestAbortAll) as e:
+            raise signals.TestAbortAll, e, sys.exc_info()[2]
         except:
             logging.exception("Exception happened when executing %s in %s.",
                               func.__name__, self.TAG)
@@ -894,15 +918,15 @@ class BaseTestClass(object):
                     self.TAG,
                     "All test cases skipped; unable to find any test case.")
             return self.results
-        except signals.TestAbortClass:
+        except (signals.TestAbortClass, acts_signals.TestAbortClass):
             logging.info("Received TestAbortClass signal")
             return self.results
-        except signals.TestAbortAll as e:
+        except (signals.TestAbortAll, acts_signals.TestAbortAll) as e:
             logging.info("Received TestAbortAll signal")
             # Piggy-back test results on this exception object so we don't lose
             # results from this test class.
             setattr(e, "results", self.results)
-            raise e
+            raise signals.TestAbortAll, e, sys.exc_info()[2]
         except Exception as e:
             # Exception happened during test.
             logging.exception(e)
@@ -923,7 +947,7 @@ class BaseTestClass(object):
         user.
         """
 
-    def CatchBugReport(self, prefix=''):
+    def DumpBugReport(self, prefix=''):
         """Get device bugreport through adb command.
 
         Args:
@@ -933,12 +957,14 @@ class BaseTestClass(object):
         if prefix:
             prefix = re.sub('[^\w\-_\. ]', '_', prefix) + '_'
 
-        for i in range(len(self.android_devices)):
-            device = self.android_devices[i]
-            bug_report_file_name = prefix + _BUG_REPORT_FILE_PREFIX + str(
-                i) + _BUG_REPORT_FILE_EXTENSION
+        for device in self.android_devices:
+            bug_report_file_name = (prefix
+                                    + _BUG_REPORT_FILE_PREFIX
+                                    + device.serial
+                                    + _BUG_REPORT_FILE_EXTENSION)
+
             bug_report_file_path = os.path.join(logging.log_path,
                                                 bug_report_file_name)
 
-            logging.info('Catching bugreport %s' % bug_report_file_path)
+            logging.info('Catching bugreport %s...' % bug_report_file_path)
             device.adb.bugreport(bug_report_file_path)

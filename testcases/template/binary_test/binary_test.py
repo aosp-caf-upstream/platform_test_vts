@@ -196,15 +196,17 @@ class BinaryTest(base_test.BaseTestClass):
 
         if self.coverage.enabled and self.coverage.global_coverage:
             self.coverage.InitializeDeviceCoverage(self._dut)
-            if coverage_utils.FLUSH_PATH_VAR not in self.envp:
-                self.envp[coverage_utils.FLUSH_PATH_VAR] = (
-                    path_utils.JoinTargetPath(coverage_utils.TARGET_COVERAGE_PATH,
-                        'self'))
+            for tag in [self.DEFAULT_TAG_32, self.DEFAULT_TAG_64]:
+                if tag in self.envp:
+                    self.envp[tag] = '%s %s'.format(
+                        self.envp[tag], coverage_utils.COVERAGE_TEST_ENV)
+                else:
+                    self.envp[tag] = coverage_utils.COVERAGE_TEST_ENV
 
         self.testcases = []
 
         ret = precondition_utils.CanRunHidlHalTest(self, self._dut,
-                                                   self.shell)
+                                                   self.shell, self.run_as_compliance_test)
         if not ret:
             self._skip_all_testcases = True
 
@@ -360,7 +362,8 @@ class BinaryTest(base_test.BaseTestClass):
 
         # Retrieve coverage if applicable
         if self.coverage.enabled and self.coverage.global_coverage:
-            self.coverage.SetCoverageData(dut=self._dut, isGlobal=True)
+            if not self._skip_all_testcases:
+                self.coverage.SetCoverageData(dut=self._dut, isGlobal=True)
 
         # Clean up the pushed binaries
         logging.info('Start class cleaning up jobs.')
@@ -386,7 +389,7 @@ class BinaryTest(base_test.BaseTestClass):
         if not cmd_results or any(cmd_results[const.EXIT_CODE]):
             logging.warning('Failed to remove: %s', cmd_results)
 
-        if self.profiling.enabled:
+        if not self._skip_all_testcases and self.profiling.enabled:
             self.profiling.ProcessAndUploadTraceData()
 
         logging.info('Finished class cleaning up jobs.')

@@ -42,14 +42,14 @@ class HalHidlReplayTest(binary_test.BinaryTest):
 
     def setUpClass(self):
         """Prepares class and initializes a target device."""
+        self._test_hal_services = set()
         super(HalHidlReplayTest, self).setUpClass()
 
         if self._skip_all_testcases:
             return
 
-        if self.coverage.enabled:
-            # enable passthrough mode to measure code coverage.
-            self.shell.Execute('setprop vts.hidl.get_stub true')
+        if self.coverage.enabled and self._test_hal_services is not None:
+            self.coverage.SetHalNames(self._test_hal_services)
 
     # @Override
     def CreateTestCases(self):
@@ -117,9 +117,8 @@ class HalHidlReplayTest(binary_test.BinaryTest):
                 if stderr and stderr.strip():
                     for line in stderr.split('\n'):
                         logging.error(line)
-            asserts.assertTrue(False, 'Test {} failed with the following results: {}'.format(
-                test_case, command_results))
-
+            asserts.fail('Test {} failed with the following results: {}'.format(
+                    test_case, command_results))
 
     def tearDownClass(self):
         """Performs clean-up tasks."""
@@ -134,25 +133,21 @@ class HalHidlReplayTest(binary_test.BinaryTest):
                 if not cmd_results or any(cmd_results[const.EXIT_CODE]):
                     logging.warning("Failed to remove: %s", cmd_results)
 
-        if self.coverage.enabled:
-            # disable passthrough mode.
-            self.shell.Execute('setprop vts.hidl.get_stub false')
         super(HalHidlReplayTest, self).tearDownClass()
 
     def setUp(self):
         """Setup for code coverage for each test case."""
         super(HalHidlReplayTest, self).setUp()
         if self.coverage.enabled and not self.coverage.global_coverage:
-            # enable passthrough mode to measure code coverage.
-            self.shell.Execute('setprop vts.hidl.get_stub true')
+            self.coverage.SetCoverageReportFilePrefix(
+                self._current_record.test_name.replace('/', '_'))
             self.coverage.InitializeDeviceCoverage(self._dut)
 
     def tearDown(self):
         """Generate the coverage data for each test case."""
         if self.coverage.enabled and not self.coverage.global_coverage:
             self.coverage.SetCoverageData(dut=self._dut, isGlobal=False)
-            # disable passthrough mode.
-            self.shell.Execute('setprop vts.hidl.get_stub false')
+
         super(HalHidlReplayTest, self).tearDown()
 
     def _GetServiceInstanceCombinations(self, trace_path):
@@ -181,15 +176,13 @@ class HalHidlReplayTest(binary_test.BinaryTest):
                 service = line[len('hal_service: '):]
                 registered_services.append(service)
 
-        framework_comp_matrix_xml = self._dut.getCompMatrixXml()
-        framework_vintf_xml = self._dut.getVintfXml(
-            use_lshal=False, is_framework_manifest=True)
-
         for service in registered_services:
-            service_names = set(
-                hal_service_name_utils.GetServiceNamesFromCompMatrix(
-                    framework_comp_matrix_xml, service))
-            service_instances[service] = service_names
+            _, service_names = hal_service_name_utils.GetHalServiceName(
+                self.shell, service, self.abi_bitness,
+                self.run_as_compliance_test)
+            if service_names:
+                service_instances[service] = service_names
+                self._test_hal_services.add(service)
         logging.info("registered service instances: %s", service_instances)
 
         service_instance_combinations = \
