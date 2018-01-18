@@ -104,8 +104,59 @@ def CanRunHidlHalTest(test_instance,
         testable, _ = hal_service_name_utils.GetHalServiceName(
             shell, hal, bitness, run_as_compliance_test)
         if not testable:
-            logging.warn("The required hal %s is not testable.", hal)
-            return False
+            if run_as_compliance_test:
+                logging.warn("The required hal %s is not testable.", hal)
+                return False
+            else:
+                # For non compliance test, check in addition whether lshal
+                # contains the testing hal, if so, run the test (this is to test
+                # experimental hals which are not specified in manifest files).
+                results = shell.Execute("lshal --neat | grep %s" % hal)
+                if not results[const.STDOUT]:
+                    logging.warn("The required hal %s is not testable.", hal)
+                    return False
 
     logging.info("Precondition check pass.")
+    return True
+
+
+def CheckSysPropPrecondition(test_instance,
+                             dut,
+                             shell=None):
+    """Checks sysprop precondition of a test instance.
+
+    Args:
+        test_instance: the test instance which inherits BaseTestClass.
+        dut: the AndroidDevice under test.
+        shell: the ShellMirrorObject to execute command on the device.
+               If not specified, the function creates one from dut.
+
+    Returns:
+        True if no sysprop precondition is set,
+        the precondition is satisfied or
+        there is an error in retrieving the target sysprop;
+        False otherwise.
+    """
+    if not hasattr(test_instance, keys.ConfigKeys.IKEY_PRECONDITION_SYSPROP):
+        return True
+
+    precond_sysprop = str(getattr(
+        test_instance, keys.ConfigKeys.IKEY_PRECONDITION_SYSPROP, ''))
+    if "=" not in precond_sysprop:
+        logging.error("precondition-sysprop value is invalid.")
+        return True
+
+    if shell is None:
+        dut.shell.InvokeTerminal("check_sysprop_precondition")
+        shell = dut.shell.check_sysprop_precondition
+
+    sysprop_key, sysprop_value = precond_sysprop.split('=')
+    cmd_results = shell.Execute('getprop %s' % sysprop_key)
+    if any(cmd_results[const.EXIT_CODE]):
+        logging.error('Failed to read sysprop:\n%s', sysprop_key)
+        return True
+    else:
+        value = cmd_results[const.STDOUT][0].strip()
+        if len(value) == 0 or value != sysprop_value:
+            return False
     return True

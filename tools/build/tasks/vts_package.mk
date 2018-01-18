@@ -47,7 +47,7 @@ test_suite_readme := test/vts/README.md
 include $(BUILD_SYSTEM)/tasks/tools/compatibility.mk
 
 .PHONY: vts
-vts: $(compatibility_zip) run adb fastboot simg2img
+vts: $(compatibility_zip) run adb
 $(call dist-for-goals, vts, $(compatibility_zip))
 
 # Packaging rule for android-vts.zip's testcases dir (DATA subdir).
@@ -152,6 +152,15 @@ host_camera_its_copy_pairs := \
   $(foreach f,$(host_camera_its_files),\
     cts/apps/CameraITS/$(f):$(VTS_TESTCASES_OUT)/CameraITS/$(f))
 
+host_hc_files := \
+  $(call find-files-in-subdirs,test/framework/harnesses/host_controller,"*.py" -and -type f,.) \
+  $(call find-files-in-subdirs,test/framework/harnesses/host_controller,"*.config" -and -type f,.) \
+  $(call find-files-in-subdirs,test/framework/harnesses/host_controller,"*.sh" -and -type f,.)
+
+host_hc_copy_pairs := \
+  $(foreach f,$(host_hc_files),\
+      test/framework/harnesses/host_controller/$(f):$(VTS_TESTCASES_OUT)/host_controller/$(f))
+
 host_acloud_files := \
   $(call find-files-in-subdirs,tools/acloud,"*.py" -and -type f,.) \
   $(call find-files-in-subdirs,tools/acloud,"*.config" -and -type f,.)
@@ -159,6 +168,13 @@ host_acloud_files := \
 host_acloud_copy_pairs := \
   $(foreach f,$(host_acloud_files),\
     tools/acloud/$(f):$(VTS_TESTCASES_OUT)/acloud/$(f))
+
+host_vti_proto_files := \
+  $(call find-files-in-subdirs,test/vti/test_serving/proto,"*.py" -and -type f,.)
+
+host_vti_proto_copy_pairs := \
+  $(foreach f,$(host_vti_proto_files),\
+    test/vti/test_serving/proto/$(f):$(VTS_TESTCASES_OUT)/vti/test_serving/proto/$(f))
 
 host_systrace_files := \
   $(filter-out .git/%, \
@@ -190,7 +206,7 @@ audio_test_res_copy_pairs := \
     hardware/interfaces/audio/$(f):$(VTS_TESTCASES_OUT)/DATA/hardware/interfaces/audio/$(f))
 
 vndk_test_res_copy_pairs := \
-  development/vndk/tools/definition-tool/datasets/eligible-list-master.csv:$(VTS_TESTCASES_OUT)/vts/testcases/vndk/golden/current/eligible-list.csv \
+  development/vndk/tools/definition-tool/datasets/eligible-list-master.csv:$(VTS_TESTCASES_OUT)/vts/testcases/vndk/golden/$(PLATFORM_VNDK_VERSION)/eligible-list.csv \
 
 kernel_rootdir_test_rc_files := \
   $(call find-files-in-subdirs,system/core/rootdir,"*.rc" -and -type f,.) \
@@ -213,7 +229,9 @@ acts_testcases_copy_pairs := \
   $(foreach f,$(acts_testcases_files),\
     tools/test/connectivity/acts/tests/google/$(f):$(VTS_TESTCASES_OUT)/vts/testcases/acts/$(f))
 
-$(compatibility_zip): \
+$(compatibility_zip): vts_copy_pairs
+
+vts_copy_pairs: \
   $(call copy-many-files,$(target_native_copy_pairs)) \
   $(call copy-many-files,$(target_spec_copy_pairs)) \
   $(call copy-many-files,$(target_trace_copy_pairs)) \
@@ -224,7 +242,9 @@ $(compatibility_zip): \
   $(call copy-many-files,$(host_testcase_copy_pairs)) \
   $(call copy-many-files,$(host_kernel_config_copy_pairs)) \
   $(call copy-many-files,$(host_camera_its_copy_pairs)) \
+  $(call copy-many-files,$(host_hc_copy_pairs)) \
   $(call copy-many-files,$(host_acloud_copy_pairs)) \
+  $(call copy-many-files,$(host_vti_proto_copy_pairs)) \
   $(call copy-many-files,$(host_systrace_copy_pairs)) \
   $(call copy-many-files,$(media_test_res_copy_pairs)) \
   $(call copy-many-files,$(performance_test_res_copy_pairs)) \
@@ -232,6 +252,8 @@ $(compatibility_zip): \
   $(call copy-many-files,$(vndk_test_res_copy_pairs)) \
   $(call copy-many-files,$(kernel_rootdir_test_rc_copy_pairs)) \
   $(call copy-many-files,$(acts_framework_copy_pairs)) \
-  $(call copy-many-files,$(acts_testcases_copy_pairs)) \
+  $(call copy-many-files,$(acts_testcases_copy_pairs))
+	@touch $(VTS_TESTCASES_OUT)/vti/test_serving/__init__.py
+	@touch $(VTS_TESTCASES_OUT)/vti/__init__.py
 
 -include vendor/google_vts/tools/build/vts_package_vendor.mk

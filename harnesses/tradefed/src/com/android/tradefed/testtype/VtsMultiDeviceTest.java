@@ -114,6 +114,7 @@ public class VtsMultiDeviceTest
     static final String BINARY_TEST_TYPE_HOST_BINARY_TEST = "host_binary_test";
     static final String BUG_REPORT_ON_FAILURE = "bug_report_on_failure";
     static final String ENABLE_COVERAGE = "enable_coverage";
+    static final String EXCLUDE_COVERAGE_PATH = "exclude_coverage_path";
     static final String ENABLE_PROFILING = "enable_profiling";
     static final String ENABLE_SANCOV = "enable_sancov";
     static final String GTEST_BATCH_MODE = "gtest_batch_mode";
@@ -127,6 +128,7 @@ public class VtsMultiDeviceTest
     static final String PRECONDITION_FEATURE = "precondition_feature";
     static final String PRECONDITION_FILE_PATH_PREFIX = "precondition_file_path_prefix";
     static final String PRECONDITION_LSHAL = "precondition_lshal";
+    static final String PRECONDITION_SYSPROP = "precondition_sysprop";
     static final String PRECONDITION_VINTF = "precondition_vintf";
     static final String ENABLE_SYSTRACE = "enable_systrace";
     static final String HAL_HIDL_REPLAY_TEST_TRACE_PATHS = "hal_hidl_replay_test_trace_paths";
@@ -197,6 +199,11 @@ public class VtsMultiDeviceTest
     @Option(name = "precondition-lshal",
         description = "The name of a `lshal`-listable feature needed to run the test.")
     private String mPreconditionLshal = null;
+
+    @Option(name = "precondition-sysprop",
+            description = "The name=value for a system property configuration that needs "
+                    + "to be met to run the test.")
+    private String mPreconditionSysProp = null;
 
     @Option(name = "precondition-vintf",
             description = "The full name of a HAL specified in vendor/manifest.xml and "
@@ -410,6 +417,11 @@ public class VtsMultiDeviceTest
                     + "of the module will be called to ensure the framework is free of bug. "
                     + "Note that exception in tearDownClass will not be reported as failure.")
     private boolean mRunAsVtsSelfTest = false;
+
+    @Option(name = "exclude-coverage-path",
+            description = "The coverage path that should be excluded in results. "
+                    + "Used only when enable-coverage is true.")
+    private Collection<String> mExcludeCoveragePath = new ArrayList<>();
 
     private IRunUtil mRunUtil = null;
     private IBuildInfo mBuildInfo = null;
@@ -878,6 +890,10 @@ public class VtsMultiDeviceTest
 
         if (mEnableCoverage) {
             jsonObject.put(GLOBAL_COVERAGE, mGlobalCoverage);
+            if (!mExcludeCoveragePath.isEmpty()) {
+                jsonObject.put(EXCLUDE_COVERAGE_PATH, new JSONArray(mExcludeCoveragePath));
+                CLog.i("Added %s to the Json object", EXCLUDE_COVERAGE_PATH);
+            }
             if (coverageBuild) {
                 jsonObject.put(ENABLE_COVERAGE, mEnableCoverage);
                 CLog.i("Added %s to the Json object", ENABLE_COVERAGE);
@@ -924,6 +940,11 @@ public class VtsMultiDeviceTest
         if (mPreconditionVintf != null) {
             jsonObject.put(PRECONDITION_VINTF, mPreconditionVintf);
             CLog.i("Added %s to the Json object", PRECONDITION_VINTF);
+        }
+
+        if (mPreconditionSysProp != null) {
+            jsonObject.put(PRECONDITION_SYSPROP, mPreconditionSysProp);
+            CLog.i("Added %s to the Json object", PRECONDITION_SYSPROP);
         }
 
         if (!mBinaryTestProfilingLibraryPath.isEmpty()) {
@@ -1161,14 +1182,10 @@ public class VtsMultiDeviceTest
                 && commandStatus != CommandStatus.TIMED_OUT) {
                 CLog.e("Python process failed");
                 CLog.e("Python path: %s", mPythonPath);
-                CLog.e("Stderr: %s", commandResult.getStderr());
-                CLog.e("Stdout: %s", commandResult.getStdout());
                 printVtsLogs(vtsRunnerLogDir);
                 printToDeviceLogcatAboutTestModuleStatus("ERROR");
                 throw new RuntimeException("Failed to run VTS test");
             }
-            CLog.i("Standard output is: %s", commandResult.getStdout());
-            CLog.i("Parsing test result: %s", commandResult.getStderr());
             printToDeviceLogcatAboutTestModuleStatus("END");
         }
 
@@ -1242,10 +1259,10 @@ public class VtsMultiDeviceTest
     }
 
     /**
-     * This method return the file test_run_details.txt which is then used to parse logs.
+     * This method return the file test_run_summary.json which is then used to parse logs.
      *
      * @param logDir : The file that needs to be converted
-     * @return the file named test_run_details.txt
+     * @return the file named test_run_summary.json
      * @throws IllegalArgumentException
      */
     private File getFileTestRunSummary(File logDir) throws IllegalArgumentException {

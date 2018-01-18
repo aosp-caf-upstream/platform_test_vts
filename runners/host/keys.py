@@ -103,12 +103,14 @@ class ConfigKeys(object):
     IKEY_GLOBAL_COVERAGE = "global_coverage"
     IKEY_SANCOV_RESOURCES_PATH = "sancov_resources_path"
     IKEY_GCOV_RESOURCES_PATH = "gcov_resources_path"
+    IKEY_EXCLUDE_COVERAGE_PATH = "exclude_coverage_path"
 
     # Keys for the HAL HIDL GTest type (see VtsMultiDeviceTest.java).
     IKEY_PRECONDITION_HWBINDER_SERVICE = "precondition_hwbinder_service"
     IKEY_PRECONDITION_FEATURE = "precondition_feature"
     IKEY_PRECONDITION_FILE_PATH_PREFIX = "precondition_file_path_prefix"
     IKEY_PRECONDITION_LSHAL = "precondition_lshal"
+    IKEY_PRECONDITION_SYSPROP = "precondition_sysprop"
     IKEY_PRECONDITION_VINTF = "precondition_vintf"
 
     # Keys for toggle passthrough mode
