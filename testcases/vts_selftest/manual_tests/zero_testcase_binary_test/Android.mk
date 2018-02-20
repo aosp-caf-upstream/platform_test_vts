@@ -1,4 +1,5 @@
-# Copyright (C) 2016 The Android Open Source Project
+#
+# Copyright (C) 2018 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,25 +12,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+#
 LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
-
-LOCAL_MODULE_TAGS := optional
-LOCAL_PREBUILT_EXECUTABLES := vts-tradefed
-include $(BUILD_HOST_PREBUILT)
-
-include $(CLEAR_VARS)
-
-LOCAL_IS_HOST_MODULE := true
-LOCAL_MODULE := vts-tradefed_win
-LOCAL_MODULE_CLASS := EXECUTABLES
-LOCAL_SRC_FILES := vts-tradefed_win.bat
-LOCAL_MODULE_SUFFIX := .bat
-LOCAL_MULTILIB := first
-LOCAL_MODULE_HOST_OS := windows
-include $(BUILD_PREBUILT)
-
-.PHONY: vts-tradefed-standalone
-vts-tradefed-standalone: vts-tradefed hosttestlib compatibility-host-util tradefed
+LOCAL_MODULE := VtsSelfTestZeroTestCaseBinaryTest
+VTS_CONFIG_SRC_DIR := testcases/vts_selftest/manual_tests/zero_test_case_binary_test
+include test/vts/tools/build/Android.host_config.mk
