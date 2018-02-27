@@ -23,6 +23,7 @@ import zipfile
 from vts.proto import VtsReportMessage_pb2 as ReportMsg
 from vts.runners.host import keys
 from vts.utils.python.archive import archive_parser
+from vts.utils.python.common import cmd_utils
 from vts.utils.python.controllers.adb import AdbError
 from vts.utils.python.coverage import coverage_report
 from vts.utils.python.coverage import gcda_parser
@@ -145,17 +146,21 @@ class CoverageFeature(feature_utils.Feature):
             The relative path to the original source file corresponding to the
             provided gcno summary. The path is relative to the root of the build.
         """
-        # Check the source file for the entry function.
-        src_file_path = gcno_summary.functions[0].src_file_name
-        src_file_name = src_file_path.rsplit(".", 1)[0]
-        # If build with legacy compile system, compare only the base source file
-        # name. Otherwise, compare the full source file name (with path info).
-        if legacy_build:
-            base_src_file_name = os.path.basename(src_file_name)
-            return src_file_path if file_name.endswith(
-                base_src_file_name) else None
-        else:
-            return src_file_path if file_name.endswith(src_file_name) else None
+        if gcno_summary is None or gcno_summary.functions is None:
+            return None
+        for key in gcno_summary.functions:
+            src_file_path = gcno_summary.functions[key].src_file_name
+            src_file_name = src_file_path.rsplit(".", 1)[0]
+            # If build with legacy compile system, compare only the base source file
+            # name. Otherwise, compare the full source file name (with path info).
+            if legacy_build:
+                base_src_file_name = os.path.basename(src_file_name)
+                if file_name.endswith(base_src_file_name):
+                    return src_file_path
+            else:
+                if file_name.endswith(src_file_name):
+                    return src_file_path
+        return None
 
     def _GetChecksumGcnoDict(self, cov_zip):
         """Generates a dictionary from gcno checksum to GCNOParser object.
@@ -362,6 +367,7 @@ class CoverageFeature(feature_utils.Feature):
 
             # Find the corresponding gcno summary and source file name for the
             # gcda file.
+            src_file_path = None
             for gcno_file_parser in gcno_file_parsers:
                 try:
                     gcno_summary = gcno_file_parser.Parse()
@@ -382,7 +388,10 @@ class CoverageFeature(feature_utils.Feature):
             skip_path = False
             if exclude_coverage_path:
                 for path in exclude_coverage_path:
-                    if src_file_path.startswith(str(path)):
+                    base_name = os.path.basename(path)
+                    if "." not in base_name:
+                        path = path if path.endswith("/") else path + "/"
+                    if src_file_path.startswith(path):
                         skip_path = True
                         break
 
@@ -579,6 +588,13 @@ class CoverageFeature(feature_utils.Feature):
         else:
             # explicitly process coverage data for the specified modules
             self._ManualProcess(cov_zip, revision_dict, gcda_dict, isGlobal)
+
+        # cleanup the downloaded gcda files.
+        results = cmd_utils.ExecuteShellCommand(
+            "rm -rf %s" % path_utils.JoinTargetPath(self.local_coverage_path,
+                                                    "*.gcda"))
+        if any(results[cmd_utils.EXIT_CODE]):
+            logging.error("Fail to cleanup gcda files.")
 
     def SetHalNames(self, names=[]):
         """Sets the HAL names for which to process coverage.
