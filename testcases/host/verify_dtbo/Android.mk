@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2016 The Android Open Source Project
+# Copyright (C) 2018 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,26 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
 LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
-
-LOCAL_MODULE_TAGS := optional
-
-LOCAL_SRC_FILES := $(call all-java-files-under, src)
-
-LOCAL_PACKAGE_NAME := VtsAgentApp
-LOCAL_SDK_VERSION := current
-
-LOCAL_JNI_SHARED_LIBRARIES := \
-  libvts_agent_app_jni \
-
-LOCAL_MULTILIB := both
-
-LOCAL_PROGUARD_ENABLED := disabled
-LOCAL_DEX_PREOPT := false
-
-include $(BUILD_PACKAGE)
-
-include $(call all-makefiles-under, $(LOCAL_PATH))
+LOCAL_MODULE := VtsDtboVerificationTest
+VTS_CONFIG_SRC_DIR := testcases/host/verify_dtbo
+include test/vts/tools/build/Android.host_config.mk
