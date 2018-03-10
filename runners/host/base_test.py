@@ -158,6 +158,8 @@ class BaseTestClass(object):
             self.user_params, web=self.web)
         self.log_uploading = log_uploading_utils.LogUploadingFeature(
             self.user_params, web=self.web)
+        self.collect_tests_only = self.getUserParam(
+            keys.ConfigKeys.IKEY_COLLECT_TESTS_ONLY, default_value=False)
         self.run_as_vts_self_test = self.getUserParam(
             keys.ConfigKeys.RUN_AS_VTS_SELFTEST, default_value=False)
         self.run_as_compliance_test = self.getUserParam(
@@ -636,6 +638,9 @@ class BaseTestClass(object):
             asserts.assertTrue(ret is not False,
                                "Setup test entry for %s failed." % test_name)
             self.filterOneTest(test_name)
+            if self.collect_tests_only:
+                asserts.explicitPass("Collect tests only.")
+
             try:
                 ret = self._setUp(test_name)
                 asserts.assertTrue(ret is not False,
@@ -849,28 +854,17 @@ class BaseTestClass(object):
 
         return test_funcs
 
-    def run(self, test_names=None):
-        """Runs test cases within a test class by the order they appear in the
-        execution list.
-
-        One of these test cases lists will be executed, shown here in priority
-        order:
-        1. The test_names list, which is passed from cmd line. Invalid names
-           are guarded by cmd line arg parsing.
-        2. The self.tests list defined in test class. Invalid names are
-           ignored.
-        3. All function that matches test case naming convention in the test
-           class.
+    def getTests(self, test_names=None):
+        """Get the test cases within a test class.
 
         Args:
             test_names: A list of string that are test case names requested in
-                cmd line.
+                        cmd line.
 
         Returns:
-            The test results object of this class.
+            A list of tuples of (string, function). String is the test case
+            name, function is the actual test case function.
         """
-        logging.info("==========> %s <==========", self.test_module_name)
-        # Devise the actual test cases to run in the test class.
         if not test_names:
             if self.tests:
                 # Specified by run list in class.
@@ -879,13 +873,18 @@ class BaseTestClass(object):
                 # No test case specified by user, execute all in the test class
                 test_names = self._get_all_test_names()
 
-        if not self.run_as_vts_self_test:
-            self.results.requested = [
-                records.TestResultRecord(test_name, self.test_module_name)
-                for test_name in test_names if test_name.startswith(STR_TEST)
-            ]
         tests = self._get_test_funcs(test_names)
+        return tests
 
+    def runTests(self, tests):
+        """Run tests and collect test results.
+
+        Args:
+            tests: A list of tests to be run.
+
+        Returns:
+            The test results object of this class.
+        """
         # Setup for the class.
         try:
             if self._setUpClass() is False:
@@ -939,6 +938,37 @@ class BaseTestClass(object):
                 self.results.setTestModuleKeys(name, timestamp)
             logging.info("Summary for test class %s: %s",
                          self.test_module_name, self.results.summary())
+
+    def run(self, test_names=None):
+        """Runs test cases within a test class by the order they appear in the
+        execution list.
+
+        One of these test cases lists will be executed, shown here in priority
+        order:
+        1. The test_names list, which is passed from cmd line. Invalid names
+           are guarded by cmd line arg parsing.
+        2. The self.tests list defined in test class. Invalid names are
+           ignored.
+        3. All function that matches test case naming convention in the test
+           class.
+
+        Args:
+            test_names: A list of string that are test case names requested in
+                cmd line.
+
+        Returns:
+            The test results object of this class.
+        """
+        logging.info("==========> %s <==========", self.test_module_name)
+        # Devise the actual test cases to run in the test class.
+        tests = self.getTests(test_names)
+
+        if not self.run_as_vts_self_test:
+            self.results.requested = [
+                records.TestResultRecord(test_name, self.test_module_name)
+                for test_name,_ in tests if test_name.startswith(STR_TEST)
+            ]
+        return self.runTests(tests)
 
     def cleanUp(self):
         """A function that is executed upon completion of all tests cases

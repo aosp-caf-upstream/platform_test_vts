@@ -143,6 +143,8 @@ host_kernel_config_copy_pairs := \
   $(foreach f,$(host_kernel_config_files),\
     kernel/configs/$(f):$(VTS_TESTCASES_OUT)/vts/testcases/kernel/config/data/$(f))
 
+ifneq ($(TARGET_BUILD_PDK),true)
+
 host_camera_its_files := \
   $(call find-files-in-subdirs,cts/apps/CameraITS,"*.py" -and -type f,.) \
   $(call find-files-in-subdirs,cts/apps/CameraITS,"*.pdf" -and -type f,.) \
@@ -151,6 +153,12 @@ host_camera_its_files := \
 host_camera_its_copy_pairs := \
   $(foreach f,$(host_camera_its_files),\
     cts/apps/CameraITS/$(f):$(VTS_TESTCASES_OUT)/CameraITS/$(f))
+
+else
+
+host_camera_its_copy_pairs :=
+
+endif  # ifneq ($(TARGET_BUILD_PDK),true)
 
 host_hc_files := \
   $(call find-files-in-subdirs,test/framework/harnesses/host_controller,"*.py" -and -type f,.) \
@@ -239,17 +247,27 @@ target_script_copy_pairs := \
 system_property_compatibility_test_res_copy_pairs := \
   system/sepolicy/public/property_contexts:$(VTS_TESTCASES_OUT)/vts/testcases/security/system_property/data/property_contexts
 
-$(compatibility_zip): vts_copy_pairs
+$(VTS_TESTCASES_OUT)/vti/test_serving/__init__.py :
+	@mkdir -p $(VTS_TESTCASES_OUT)/vti/test_serving
+	@touch $(VTS_TESTCASES_OUT)/vti/test_serving/__init__.py
 
-vts_copy_pairs: \
-  $(call copy-many-files,$(target_native_copy_pairs)) \
-  $(call copy-many-files,$(target_spec_copy_pairs)) \
-  $(call copy-many-files,$(target_trace_copy_pairs)) \
-  $(call copy-many-files,$(target_hostdriven_copy_pairs)) \
-  $(call copy-many-files,$(target_hal_hash_copy_pairs)) \
-  $(call copy-many-files,$(host_additional_deps_copy_pairs)) \
+$(VTS_TESTCASES_OUT)/vti/__init__.py :
+	@mkdir -p $(VTS_TESTCASES_OUT)/vti
+	@touch $(VTS_TESTCASES_OUT)/vti/__init__.py
+
+vts_test_core_copy_pairs := \
   $(call copy-many-files,$(host_framework_copy_pairs)) \
   $(call copy-many-files,$(host_testcase_copy_pairs)) \
+  $(call copy-many-files,$(host_additional_deps_copy_pairs)) \
+  $(call copy-many-files,$(target_spec_copy_pairs)) \
+  $(call copy-many-files,$(target_hal_hash_copy_pairs)) \
+  $(call copy-many-files,$(acts_framework_copy_pairs)) \
+
+vts_copy_pairs := \
+  $(vts_test_core_copy_pairs) \
+  $(call copy-many-files,$(target_native_copy_pairs)) \
+  $(call copy-many-files,$(target_trace_copy_pairs)) \
+  $(call copy-many-files,$(target_hostdriven_copy_pairs)) \
   $(call copy-many-files,$(host_kernel_config_copy_pairs)) \
   $(call copy-many-files,$(host_camera_its_copy_pairs)) \
   $(call copy-many-files,$(host_hc_copy_pairs)) \
@@ -261,11 +279,15 @@ vts_copy_pairs: \
   $(call copy-many-files,$(audio_test_res_copy_pairs)) \
   $(call copy-many-files,$(vndk_test_res_copy_pairs)) \
   $(call copy-many-files,$(kernel_rootdir_test_rc_copy_pairs)) \
-  $(call copy-many-files,$(acts_framework_copy_pairs)) \
   $(call copy-many-files,$(acts_testcases_copy_pairs)) \
   $(call copy-many-files,$(target_script_copy_pairs)) \
-  $(call copy-many-files,$(system_property_compatibility_test_res_copy_pairs))
-	@touch $(VTS_TESTCASES_OUT)/vti/test_serving/__init__.py
-	@touch $(VTS_TESTCASES_OUT)/vti/__init__.py
+  $(call copy-many-files,$(system_property_compatibility_test_res_copy_pairs)) \
+  $(VTS_TESTCASES_OUT)/vti/test_serving/__init__.py \
+  $(VTS_TESTCASES_OUT)/vti/__init__.py \
+
+.PHONY: vts-test-core
+vts-test-core: $(vts_test_core_copy_pairs)
+
+$(compatibility_zip): $(vts_copy_pairs)
 
 -include vendor/google_vts/tools/build/vts_package_vendor.mk
