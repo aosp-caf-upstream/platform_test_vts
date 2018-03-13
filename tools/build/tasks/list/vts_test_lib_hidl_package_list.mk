@@ -26,7 +26,6 @@ vts_hal_driver_libs := \
   android.hardware.boot@1.0-vts.driver \
   android.hardware.broadcastradio@1.0-vts.driver \
   android.hardware.broadcastradio@1.1-vts.driver \
-  android.hardware.broadcastradio@1.2-vts.driver \
   android.hardware.broadcastradio@2.0-vts.driver \
   android.hardware.camera.common@1.0-vts.driver \
   android.hardware.camera.device@1.0-vts.driver \
@@ -118,7 +117,6 @@ vts_hal_profiler_libs := \
   android.hardware.boot@1.0-vts.profiler \
   android.hardware.broadcastradio@1.0-vts.profiler \
   android.hardware.broadcastradio@1.1-vts.profiler \
-  android.hardware.broadcastradio@1.2-vts.profiler \
   android.hardware.broadcastradio@2.0-vts.profiler \
   android.hardware.camera.common@1.0-vts.profiler \
   android.hardware.camera.device@1.0-vts.profiler \
@@ -200,6 +198,7 @@ vts_hal_profiler_libs := \
 vts_hal_test_bins := \
   VtsHalAudioV2_0TargetTest \
   VtsHalAudioEffectV2_0TargetTest \
+  VtsHalAuthSecretV1_0TargetTest \
   VtsHalBiometricsFingerprintV2_1TargetTest \
   VtsHalBluetoothV1_0TargetTest \
   VtsHalBootV1_0TargetTest \
@@ -232,6 +231,7 @@ vts_hal_test_bins := \
   VtsHalMemtrackV1_0TargetTest \
   VtsHalNeuralnetworksV1_0TargetTest \
   VtsHalNfcV1_0TargetTest \
+  VtsHalNfcV1_1TargetTest \
   VtsHalOemLockV1_0TargetTest \
   VtsHalPowerV1_0TargetTest \
   VtsHalPowerV1_1TargetTest \
@@ -244,6 +244,7 @@ vts_hal_test_bins := \
   VtsHalSecureElementV1_0TargetTest \
   VtsHalSensorsV1_0TargetTest \
   VtsHalSoundtriggerV2_0TargetTest \
+  VtsHalSoundtriggerV2_1TargetTest \
   VtsHalTetheroffloadConfigV1_0TargetTest \
   VtsHalTetheroffloadControlV1_0TargetTest \
   VtsHalThermalV1_0TargetTest \

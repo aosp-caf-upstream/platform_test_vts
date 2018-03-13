@@ -111,8 +111,11 @@ def CanRunHidlHalTest(test_instance,
                 # For non compliance test, check in addition whether lshal
                 # contains the testing hal, if so, run the test (this is to test
                 # experimental hals which are not specified in manifest files).
-                results = shell.Execute("lshal --neat | grep %s" % hal)
-                if not results[const.STDOUT]:
+                results = shell.Execute("lshal --neat")
+                if any(results[const.EXIT_CODE]):
+                    logging.warn("lshal failed: %s", results)
+                    return True
+                if hal not in results[const.STDOUT][0]:
                     logging.warn("The required hal %s is not testable.", hal)
                     return False
 
@@ -132,10 +135,11 @@ def CheckSysPropPrecondition(test_instance,
                If not specified, the function creates one from dut.
 
     Returns:
-        True if no sysprop precondition is set,
-        the precondition is satisfied or
-        there is an error in retrieving the target sysprop;
-        False otherwise.
+        False if precondition is not met (i.e., to skip tests),
+        True otherwise (e.g., when no sysprop precondition is set;
+        the precondition is satisfied;
+        there is an error in retrieving the target sysprop; or
+        the specified sysprop is undefined)
     """
     if not hasattr(test_instance, keys.ConfigKeys.IKEY_PRECONDITION_SYSPROP):
         return True
@@ -157,6 +161,8 @@ def CheckSysPropPrecondition(test_instance,
         return True
     else:
         value = cmd_results[const.STDOUT][0].strip()
-        if len(value) == 0 or value != sysprop_value:
+        if len(value) == 0:
+            return True
+        elif value != sysprop_value:
             return False
     return True
