@@ -204,6 +204,7 @@ vts_hal_test_bins := \
   VtsHalBootV1_0TargetTest \
   VtsHalBroadcastradioV1_0TargetTest \
   VtsHalBroadcastradioV1_1TargetTest \
+  VtsHalBroadcastradioV2_0TargetTest \
   VtsHalCameraProviderV2_4TargetTest \
   VtsHalCasV1_0TargetTest \
   VtsHalConfigstoreV1_0TargetTest \
@@ -216,12 +217,14 @@ vts_hal_test_bins := \
   VtsHalGnssV1_0TargetTest \
   VtsHalGnssV1_1TargetTest \
   VtsHalGraphicsComposerV2_1TargetTest \
+  VtsHalGraphicsComposerV2_2TargetTest \
   VtsHalGraphicsMapperV2_0TargetTest \
   VtsHalGraphicsMapperV2_1TargetTest \
   VtsHalHealthV1_0TargetTest \
   VtsHalHealthV2_0TargetTest \
   VtsHalIrV1_0TargetTest \
   VtsHalKeymasterV3_0TargetTest \
+  VtsHalKeymasterV4_0TargetTest \
   VtsHalLightV2_0TargetTest \
   VtsHalMediaOmxV1_0TargetComponentTest \
   VtsHalMediaOmxV1_0TargetAudioEncTest \
@@ -230,6 +233,7 @@ vts_hal_test_bins := \
   VtsHalMediaOmxV1_0TargetVideoDecTest \
   VtsHalMemtrackV1_0TargetTest \
   VtsHalNeuralnetworksV1_0TargetTest \
+  VtsHalNeuralnetworksV1_1TargetTest \
   VtsHalNfcV1_0TargetTest \
   VtsHalNfcV1_1TargetTest \
   VtsHalOemLockV1_0TargetTest \
@@ -255,6 +259,7 @@ vts_hal_test_bins := \
   VtsHalUsbV1_1TargetTest \
   VtsHalVibratorV1_0TargetTest \
   VtsHalVibratorV1_1TargetTest \
+  VtsHalVibratorV1_2TargetTest \
   VtsHalVrV1_0TargetTest \
   VtsHalWeaverV1_0TargetTest \
   VtsHalWifiV1_0TargetTest \
@@ -263,6 +268,11 @@ vts_hal_test_bins := \
   VtsHalWifiOffloadV1_0TargetTest \
   VtsHalWifiSupplicantV1_0TargetTest \
   VtsHalWifiSupplicantV1_1TargetTest \
+
+# Binaries which are part of VNDK but in the form of HIDL.
+vts_hal_test_bins += \
+  VtsVndkHidlBufferpoolV1_0TargetSingleTest \
+  VtsVndkHidlBufferpoolV1_0TargetMultiTest \
 
 vts_test_lib_hidl_packages := \
   $(vts_hal_driver_libs) \

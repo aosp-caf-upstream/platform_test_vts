@@ -17,7 +17,7 @@
   <include name="vts-base" />
   <target_preparer class="com.android.tradefed.targetprep.VtsCoveragePreparer" />
   <option name="plan" value="vts" />
-  <option name="test-tag" value="vts" />
+  <option name="test-tag" value="vts-star" />
   <option name="vts-plan-result:plan-name" value="vts-hal" />
 
   <option name="compatibility:include-filter" value="VtsHalBluetoothV1_0Target" />
@@ -33,6 +33,7 @@
   <option name="compatibility:include-filter" value="VtsHalRadioV1_1Target" />
   <option name="compatibility:include-filter" value="VtsHalRenderscriptV1_0Target" />
   <option name="compatibility:include-filter" value="VtsHalSapV1_0Target" />
+  <option name="compatibility:include-filter" value="VtsHalUsbGadgetV1_0Host" />
   <option name="compatibility:include-filter" value="VtsHalWifiV1_0Host" />
   <option name="compatibility:include-filter" value="VtsHalWifiV1_1Target" />
   <option name="compatibility:include-filter" value="VtsHalWifiNanV1_0Target" />
@@ -84,6 +85,7 @@
   <option name="compatibility:include-filter" value="VtsHalVibratorV1_0Host" />
   <option name="compatibility:include-filter" value="VtsHalVibratorV1_0Target" />
   <option name="compatibility:include-filter" value="VtsHalVibratorV1_1Target" />
+  <option name="compatibility:include-filter" value="VtsHalVibratorV1_2Target" />
   <option name="compatibility:include-filter" value="VtsHalVrV1_0Host" />
   <option name="compatibility:include-filter" value="VtsHalVrV1_0Target" />
   <option name="compatibility:include-filter" value="VtsHalWeaverV1_0Target" />
