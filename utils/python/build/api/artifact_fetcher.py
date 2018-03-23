@@ -26,7 +26,6 @@ import time
 from googleapiclient.discovery import build
 from oauth2client import client as oauth2_client
 from oauth2client.service_account import ServiceAccountCredentials
-from vts.utils.python.retry import retry
 
 logger = logging.getLogger('artifact_fetcher')
 
@@ -48,15 +47,7 @@ class AndroidBuildClient(object):
         DEFAULT_ATTEMPT_ID: string, default attempt to request for the artifact.
         DEFAULT_CHUNK_SIZE: int, number of bytes to download at a time.
         RETRY_COUNT: int, max number of retries.
-        RETRY_BACKOFF_FACTOR: float, base of exponential determining sleep time.
-                              total_time = (backoff_factor^(attempt - 1))*sleep
-        RETRY_SLEEP_MULTIPLIER: float, multiplier for how long to sleep between
-                                attempts.
-        RETRY_HTTP_CODES: int array, HTTP codes for which a retry will be
-                          attempted.
-        RETRIABLE_AUTH_ERRORS: class tuple, list of error classes for which a
-                               retry will be attempted.
-
+        RETRY_DELAY_IN_SECS: int, time delays between retries in seconds.
     """
 
     API_NAME = "androidbuildinternal"
@@ -74,15 +65,7 @@ class AndroidBuildClient(object):
 
     # Defaults for retry.
     RETRY_COUNT = 5
-    RETRY_BACKOFF_FACTOR = 1.5
-    RETRY_SLEEP_MULTIPLIER = 1
-    RETRY_HTTP_CODES = [
-        500,  # Internal Server Error
-        502,  # Bad Gateway
-        503,  # Service Unavailable
-    ]
-
-    RETRIABLE_AUTH_ERRORS = (oauth2_client.AccessTokenRefreshError, )
+    RETRY_DELAY_IN_SECS = 3
 
     def __init__(self, oauth2_service_json):
         """Initialize.
@@ -93,15 +76,21 @@ class AndroidBuildClient(object):
         authToken = ServiceAccountCredentials.from_json_keyfile_name(
             oauth2_service_json, [self.SCOPE])
         http_auth = authToken.authorize(httplib2.Http())
-        self.service = retry.RetryException(
-            exc_retry=self.RETRIABLE_AUTH_ERRORS,
-            max_retry=self.RETRY_COUNT,
-            functor=build,
-            sleep=self.RETRY_SLEEP_MULTIPLIER,
-            backoff_factor=self.RETRY_BACKOFF_FACTOR,
-            serviceName=self.API_NAME,
-            version=self.API_VERSION,
-            http=http_auth)
+        for _ in xrange(self.RETRY_COUNT):
+            try:
+                self.service = build(
+                    serviceName=self.API_NAME,
+                    version=self.API_VERSION,
+                    http=http_auth)
+                break
+            except oauth2_client.AccessTokenRefreshError as e:
+                # The following HTTP code typically indicates transient errors:
+                #    500  (Internal Server Error)
+                #    502  (Bad Gateway)
+                #    503  (Service Unavailable)
+                logging.exception(e)
+                logging.info("Retrying to connect to %s", self.API_NAME)
+                time.sleep(self.RETRY_DELAY_IN_SECS)
 
     def DownloadArtifactToFile(self,
                                branch,

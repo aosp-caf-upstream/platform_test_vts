@@ -13,13 +13,12 @@
      See the License for the specific language governing permissions and
      limitations under the License.
 -->
-<configuration description="VTS HAL Adapter Test Plan">
+<configuration description="VTS System Firmware Test Plan">
   <include name="vts-base" />
-  <target_preparer class="com.android.tradefed.targetprep.VtsCoveragePreparer" />
   <option name="plan" value="vts" />
   <option name="test-tag" value="vts-star" />
-  <option name="vts-plan-result:plan-name" value="vts-hal-adapter" />
+  <option name="vts-plan-result:plan-name" value="vts-firmware" />
 
-  <option name="compatibility:module-metadata-include-filter" key="plan" value="vts-hal-adapter" />
+  <option name="compatibility:include-filter" value="VtsFirmwareDtboVerification" />
 
 </configuration>
