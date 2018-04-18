@@ -120,11 +120,13 @@ public class VtsMultiDeviceTest
     static final String COVERAGE_REPORT_PATH = "coverage_report_path";
     static final String GLOBAL_COVERAGE = "global_coverage";
     static final String LTP_NUMBER_OF_THREADS = "ltp_number_of_threads";
+    static final String MOBLY_TEST_MODULE = "MOBLY_TEST_MODULE";
     static final String NATIVE_SERVER_PROCESS_NAME = "native_server_process_name";
     static final String PASSTHROUGH_MODE = "passthrough_mode";
     static final String PRECONDITION_HWBINDER_SERVICE = "precondition_hwbinder_service";
     static final String PRECONDITION_FEATURE = "precondition_feature";
     static final String PRECONDITION_FILE_PATH_PREFIX = "precondition_file_path_prefix";
+    static final String PRECONDITION_FIRST_API_LEVEL = "precondition_first_api_level";
     static final String PRECONDITION_LSHAL = "precondition_lshal";
     static final String PRECONDITION_SYSPROP = "precondition_sysprop";
     static final String PRECONDITION_VINTF = "precondition_vintf";
@@ -138,6 +140,7 @@ public class VtsMultiDeviceTest
     static final String TEMPLATE_BINARY_TEST_PATH = "vts/testcases/template/binary_test/binary_test";
     static final String TEMPLATE_GTEST_BINARY_TEST_PATH = "vts/testcases/template/gtest_binary_test/gtest_binary_test";
     static final String TEMPLATE_LLVMFUZZER_TEST_PATH = "vts/testcases/template/llvmfuzzer_test/llvmfuzzer_test";
+    static final String TEMPLATE_MOBLY_TEST_PATH = "vts/testcases/template/mobly/mobly_test";
     static final String TEMPLATE_HAL_HIDL_GTEST_PATH = "vts/testcases/template/hal_hidl_gtest/hal_hidl_gtest";
     static final String TEMPLATE_HAL_HIDL_REPLAY_TEST_PATH = "vts/testcases/template/hal_hidl_replay_test/hal_hidl_replay_test";
     static final String TEMPLATE_HOST_BINARY_TEST_PATH = "vts/testcases/template/host_binary_test/host_binary_test";
@@ -193,6 +196,10 @@ public class VtsMultiDeviceTest
                     + "Format of each source string:"
                     + "    <source>: absolute path of file prefix on device")
     private Collection<String> mPreconditionFilePathPrefix = new ArrayList<>();
+
+    @Option(name = "precondition-first-api-level",
+            description = "The lowest first API level required to run the test.")
+    private int mPreconditionFirstApiLevel = 0;
 
     @Option(name = "precondition-lshal",
         description = "The name of a `lshal`-listable feature needed to run the test.")
@@ -425,6 +432,13 @@ public class VtsMultiDeviceTest
                     + "Used only when enable-coverage is true.")
     private Collection<String> mExcludeCoveragePath = new ArrayList<>();
 
+    @Option(name = "mobly-test-module",
+            description = "Mobly test module name. "
+                    + "If this value is specified, VTS will use mobly test template "
+                    + "with the configurations."
+                    + "Multiple values can be added by repeatly using this option.")
+    private Collection<String> mMoblyTestModule = new ArrayList<>();
+
     private IRunUtil mRunUtil = null;
     private IBuildInfo mBuildInfo = null;
     private String mRunName = "VtsHostDrivenTest";
@@ -614,6 +628,8 @@ public class VtsMultiDeviceTest
             } else if (mBinaryTestType.equals(BINARY_TEST_TYPE_LLVMFUZZER)) {
                 // Fuzz test don't need test-case-path.
                 setTestCasePath(TEMPLATE_LLVMFUZZER_TEST_PATH);
+            } else if (!mMoblyTestModule.isEmpty()) {
+                setTestCasePath(TEMPLATE_MOBLY_TEST_PATH);
             } else {
                 throw new IllegalArgumentException("test-case-path is not set.");
             }
@@ -939,6 +955,11 @@ public class VtsMultiDeviceTest
             CLog.i("Added %s to the Json object", PRECONDITION_FILE_PATH_PREFIX);
         }
 
+        if (mPreconditionFirstApiLevel != 0) {
+            jsonObject.put(PRECONDITION_FIRST_API_LEVEL, mPreconditionFirstApiLevel);
+            CLog.i("Added %s to the Json object", PRECONDITION_FIRST_API_LEVEL);
+        }
+
         if (mPreconditionLshal != null) {
             jsonObject.put(PRECONDITION_LSHAL, mPreconditionLshal);
             CLog.i("Added %s to the Json object", PRECONDITION_LSHAL);
@@ -1019,6 +1040,11 @@ public class VtsMultiDeviceTest
         if ("vts".equals(mBuildInfo.getTestTag())) {
             jsonObject.put(RUN_AS_COMPLIANCE_TEST, true);
             CLog.i("Added %s to the Json object", RUN_AS_COMPLIANCE_TEST);
+        }
+
+        if (!mMoblyTestModule.isEmpty()) {
+            jsonObject.put(MOBLY_TEST_MODULE, new JSONArray(mMoblyTestModule));
+            CLog.i("Added %s to the Json object", MOBLY_TEST_MODULE);
         }
     }
 
@@ -1138,6 +1164,10 @@ public class VtsMultiDeviceTest
                 && commandStatus != CommandStatus.TIMED_OUT) {
                 CLog.e("Python process failed");
                 CLog.e("Python path: %s", vtsPythonRunnerHelper.getPythonPath());
+                CLog.e("Command stdout: " + commandResult.getStdout());
+                CLog.e("Command stderr: " + commandResult.getStderr());
+                CLog.e("Command status: " + commandStatus);
+                CLog.e("Python log: ");
                 printVtsLogs(vtsRunnerLogDir);
                 printToDeviceLogcatAboutTestModuleStatus("ERROR");
                 throw new RuntimeException("Failed to run VTS test");

@@ -33,6 +33,7 @@ from vts.utils.python.common import filter_utils
 from vts.utils.python.common import list_utils
 from vts.utils.python.coverage import coverage_utils
 from vts.utils.python.coverage import sancov_utils
+from vts.utils.python.precondition import precondition_utils
 from vts.utils.python.profiling import profiling_utils
 from vts.utils.python.reporting import log_uploading_utils
 from vts.utils.python.systrace import systrace_utils
@@ -302,6 +303,9 @@ class BaseTestClass(object):
         """Proxy function to guarantee the base implementation of setUpClass
         is called.
         """
+        if not precondition_utils.MeetFirstApiLevelPrecondition(self):
+            self.skipAllTests("The device's first API level doesn't meet the "
+                              "precondition.")
         return self.setUpClass()
 
     def setUpClass(self):
@@ -412,7 +416,7 @@ class BaseTestClass(object):
             self.DumpBugReport(
                 '%s-%s' % (self.test_module_name, record.test_name))
         if self._logcat_on_failure:
-            self.DumpLogcat('%s-%s' % (self.TAG, record.test_name))
+            self.DumpLogcat('%s-%s' % (self.test_module_name, record.test_name))
 
     def onFail(self, test_name, begin_time):
         """A function that is executed upon a test case failure.
@@ -508,7 +512,7 @@ class BaseTestClass(object):
             self.DumpBugReport(
                 '%s-%s' % (self.test_module_name, record.test_name))
         if self._logcat_on_failure:
-            self.DumpLogcat('%s-%s' % (self.TAG, record.test_name))
+            self.DumpLogcat('%s-%s' % (self.test_module_name, record.test_name))
 
     def onException(self, test_name, begin_time):
         """A function that is executed upon an unhandled exception from a test
