@@ -112,6 +112,7 @@ class ConfigKeys(object):
     IKEY_PRECONDITION_HWBINDER_SERVICE = "precondition_hwbinder_service"
     IKEY_PRECONDITION_FEATURE = "precondition_feature"
     IKEY_PRECONDITION_FILE_PATH_PREFIX = "precondition_file_path_prefix"
+    IKEY_PRECONDITION_FIRST_API_LEVEL = "precondition_first_api_level"
     IKEY_PRECONDITION_LSHAL = "precondition_lshal"
     IKEY_PRECONDITION_SYSPROP = "precondition_sysprop"
     IKEY_PRECONDITION_VINTF = "precondition_vintf"
@@ -142,3 +143,6 @@ class ConfigKeys(object):
 
     # Vts compliance test related keys
     RUN_AS_COMPLIANCE_TEST = "run_as_compliance_test"
+
+    # Mobly test related keys
+    MOBLY_TEST_MODULE = "MOBLY_TEST_MODULE"
